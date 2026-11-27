@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>지역 일자리·인프라 탐색</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+<script src="vendor/leaflet/leaflet.js"></script>
+<style>
+  :root{
+    --sidebar-bg:#121726;
+    --sidebar-bg-soft:#1a2036;
+    --sidebar-line:#262d45;
+    --sidebar-ink:#eef0fa;
+    --sidebar-muted:#8d93b5;
+
+    --bg:#f4f6fb;
+    --card:#ffffff;
+    --ink:#171a24;
+    --ink-soft:#4b5068;
+    --muted:#767c96;
+    --line:#e5e8f2;
+
+    --teal:#14b8a6;
+    --teal-dark:#0e9488;
+    --teal-soft:#e4f7f5;
+    --amber:#f0a93f;
+    --coral:#e85d5d;
+
+    --radius:14px;
+    --shadow:0 2px 12px rgba(20,24,50,.06), 0 1px 2px rgba(20,24,50,.05);
+  }
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body {
+    font-family: "Pretendard","Apple SD Gothic Neo","Malgun Gothic",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background: var(--bg);
+    margin:0; color: var(--ink); line-height:1.5;
+  }
+
+  .app { display:flex; min-height:100vh; align-items:stretch; }
+
+  /* ===== 사이드바 ===== */
+  .sidebar {
+    flex:none; width:300px; background:var(--sidebar-bg); color:var(--sidebar-ink);
+    padding:24px 18px; display:flex; flex-direction:column; gap:20px;
+  }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .brand-mark {
+    flex:none; width:34px; height:34px; border-radius:10px;
+    background: linear-gradient(135deg, var(--teal), #0a6e65);
+    display:flex; align-items:center; justify-content:center; font-size:16px;
+  }
+  .brand h1 { font-size:16px; font-weight:800; margin:0; letter-spacing:-0.2px; }
+  .brand p { font-size:11.5px; color:var(--sidebar-muted); margin:2px 0 0; }
+
+  .legend-gauge { display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--sidebar-muted); }
+  .legend-gauge .bar { flex:1; height:7px; border-radius:4px;
+    background:linear-gradient(to right,#2fbf71,#f0c33e,#e8513f); }
+
+  .region-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; margin:0 -6px; padding:0 6px; }
+  .region-item {
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; cursor:pointer;
+    border:1px solid transparent; transition: background .12s ease, border-color .12s ease;
+  }
+  .region-item:hover { background: var(--sidebar-bg-soft); }
+  .region-item.active { background: var(--sidebar-bg-soft); border-color: var(--teal); }
+  .region-item .dot { flex:none; width:9px; height:9px; border-radius:50%; }
+  .region-item .name { flex:1; font-size:13.5px; font-weight:700; }
+  .region-item .rate { font-size:12px; color:var(--sidebar-muted); font-variant-numeric:tabular-nums; }
+  .region-item.active .rate { color:var(--sidebar-ink); }
+
+  .source-note { border-top:1px solid var(--sidebar-line); padding-top:14px; display:flex; flex-direction:column; gap:8px; }
+  .source-note .row { display:flex; gap:8px; font-size:11.5px; color:var(--sidebar-muted); line-height:1.5; }
+  .source-note .dot2 { flex:none; width:7px; height:7px; border-radius:50%; margin-top:5px; }
+  .source-note b { color:var(--sidebar-ink); }
+  .d-real{ background:#2fbf71; } .d-hybrid{ background:#4aa8ff; } .d-demo{ background:#6b7190; }
+
+  /* ===== 메인 영역 ===== */
+  .main { flex:1; min-width:0; padding:28px 32px 60px; }
+  .main-inner { max-width:880px; margin:0 auto; }
+
+  .empty-state { text-align:center; padding:120px 20px; color:var(--muted); }
+  .empty-state .big { font-size:40px; margin-bottom:14px; }
+  .empty-state p { font-size:14.5px; line-height:1.7; }
+
+  .main-head { display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; margin-bottom:22px; }
+  .main-head h2 { font-size:26px; font-weight:800; margin:0; letter-spacing:-0.4px; }
+  .main-head .sub { font-size:13px; color:var(--muted); margin-top:4px; }
+  .head-stats { display:flex; gap:22px; }
+  .head-stat b { display:block; font-size:22px; font-weight:800; }
+  .head-stat span { font-size:12px; color:var(--muted); }
+
+  .tabs { display:flex; gap:6px; border-bottom:1px solid var(--line); margin-bottom:22px; }
+  .tab-btn {
+    appearance:none; border:none; background:none; cursor:pointer; padding:10px 16px;
+    font-size:14px; font-weight:700; color:var(--muted); border-bottom:2px solid transparent;
+    margin-bottom:-1px; transition: color .12s ease;
+  }
+  .tab-btn:hover { color:var(--ink); }
+  .tab-btn.active { color:var(--teal-dark); border-bottom-color:var(--teal); }
+
+  .tab-panel { display:none; }
+  .tab-panel.active { display:block; }
+
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow); }
+  .panel + .panel { margin-top:16px; }
+  .panel-note { font-size:13px; color:var(--muted); margin-bottom:14px; }
+
+  select, button.toggle {
+    padding:8px 14px; border-radius:999px; border:1px solid var(--line); background:#fff;
+    cursor:pointer; font-size:13.5px; color:var(--ink-soft); font-weight:600; transition: all .12s ease;
+  }
+  select { border-radius:8px; }
+  button.toggle:hover { border-color:var(--teal); color:var(--teal-dark); }
+  button.toggle.on { background:var(--teal); color:#fff; border-color:var(--teal); }
+  .toggles { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .filter-row { display:flex; align-items:center; gap:10px; margin-bottom:16px; font-size:13.5px; color:var(--ink-soft); font-weight:600; }
+
+  .marker-row { display:flex; gap:10px; flex-wrap:wrap; margin:4px 0; }
+  .marker { width:36px; height:36px; border-radius:50%; color:#fff; display:flex; align-items:center;
+            justify-content:center; font-size:14px; font-weight:700; cursor:pointer; border:2px solid #fff;
+            box-shadow:0 1px 4px rgba(20,20,40,.25); transition: transform .12s ease; }
+  .marker:hover { transform: scale(1.08); }
+  .empty-note { color:var(--muted); font-size:13.5px; padding:6px 2px; }
+  .job-detail { margin-top:14px; padding:14px 16px; background:var(--teal-soft); border-radius:12px;
+                font-size:13.5px; line-height:1.8; color:var(--ink); }
+  .job-detail b { color:var(--teal-dark); }
+
+  .status-note { font-size:13px; color:var(--ink-soft); margin-bottom:12px; min-height:18px; display:flex; align-items:center; gap:6px; }
+  .status-note.warn { color:#9a5b12; }
+
+  #map { width:100%; height:420px; border-radius:12px; background:#eceef7; overflow:hidden; }
+
+  table { border-collapse:collapse; width:100%; margin-top:10px; font-size:13.5px; }
+  td, th { border:1px solid var(--line); padding:10px; text-align:center; }
+  th { background:#f6f7fc; color:var(--ink-soft); font-weight:700; }
+  td { color:var(--ink); }
+
+  @media (max-width: 760px){
+    .app { flex-direction:column; }
+    .sidebar { width:auto; flex-direction:row; flex-wrap:wrap; align-items:center; padding:16px; }
+    .brand { width:100%; }
+    .legend-gauge { flex:none; width:180px; }
+    .region-list { flex-direction:row; overflow-x:auto; width:100%; }
+    .region-item { flex:none; }
+    .source-note { display:none; }
+    .main { padding:20px 16px 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">🗺️</div>
+      <div>
+        <h1>지역 일자리·인프라 탐색</h1>
+        <p>지역을 선택해 현황을 확인하세요</p>
+      </div>
+    </div>
+
+    <div class="legend-gauge">실업률 낮음 <span class="bar"></span> 높음</div>
+
+    <div class="region-list" id="regionList"></div>
+
+    <div class="source-note">
+      <div class="row"><span class="dot2 d-real"></span><span><b>실업률·취업자 수</b> — 통계청(국가데이터처) 실제 통계 (2026년 9월 기준)</span></div>
+      <div class="row"><span class="dot2 d-hybrid"></span><span><b>생활 인프라</b> — OpenStreetMap 실시간 데이터, 실패 시 가상 데이터로 대체</span></div>
+      <div class="row"><span class="dot2 d-demo"></span><span><b>기업·채용 정보</b> — 시연용 가상 데이터</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-inner">
+
+      <div class="empty-state" id="emptyState">
+        <div class="big">📍</div>
+        <p>왼쪽 목록에서 지역을 선택하면<br>일자리 현황, 채용 정보, 생활 인프라를 확인할 수 있습니다.</p>
+      </div>
+
+      <div id="detailPanel" style="display:none">
+        <div class="main-head">
+          <div>
+            <h2 id="regionTitle">-</h2>
+            <div class="sub">색이 진할수록 실업률이 높은 지역입니다</div>
+          </div>
+          <div class="head-stats">
+            <div class="head-stat"><b id="unempNum">-</b><span>실업률(%)</span></div>
+            <div class="head-stat"><b id="empNum">-</b><span>취업자 수(만명)</span></div>
+          </div>
+        </div>
+
+        <div class="tabs" id="tabsNav">
+          <button class="tab-btn active" data-tab="jobs">기업·채용 정보</button>
+          <button class="tab-btn" data-tab="infra">생활 인프라</button>
+          <button class="tab-btn" data-tab="compare">지역 비교</button>
+        </div>
+
+        <div class="tab-panel active" data-panel="jobs">
+          <div class="panel">
+            <div class="filter-row">업종 필터 <select id="industryFilter"></select></div>
+            <div class="marker-row" id="jobMarkers"></div>
+            <div class="job-detail" id="jobDetail" style="display:none"></div>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="infra">
+          <div class="panel">
+            <div class="panel-note">버튼을 눌러 지도에 표시하거나 숨길 수 있습니다.</div>
+            <div class="toggles" id="infraToggles"></div>
+            <div class="status-note" id="infraStatus"></div>
+            <div id="map"></div>
+          </div>
+        </div>
+
+        <div class="tab-panel" data-panel="compare">
+          <div class="panel">
+            <div class="filter-row">비교할 지역 <select id="compareSelect"></select></div>
+            <table id="compareTable"></table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+</div>
+
+<script>
+// ===== 지도 설정 =====
+// 지도: Leaflet(자체 호스팅: vendor/leaflet) + OpenStreetMap 타일 (API 키/도메인 등록 불필요, 완전 무료)
+// Leaflet을 외부 CDN이 아닌 프로젝트 폴더에 직접 담아둔 이유: 학교/기관 네트워크가 CDN 도메인을
+// 차단하는 경우에도 지도 라이브러리 자체는 항상 로드되도록 하기 위함.
+// 인프라 마커: Overpass API(OpenStreetMap 데이터 조회 서비스, API 키 불필요·무료)로
+// 지역 중심 좌표 반경 안의 실제 지하철역/버스정류장/음식점/미술관/공원 데이터를 가져오고,
+// 네트워크 문제 등으로 실패하면 지역별로 정해둔 가상 개수만큼 무작위 좌표를 생성해 대체 표시한다.
+
+// 지역별 지도 중심 좌표(위도, 경도)
+const REGION_COORDS = {
+  "서울":[37.5665,126.9780], "부산":[35.1796,129.0756], "대구":[35.8714,128.6014],
+  "인천":[37.4563,126.7052], "광주":[35.1595,126.8526], "대전":[36.3504,127.3845],
+  "세종":[36.4800,127.2890], "경기":[37.4138,127.5183], "강원":[37.8228,128.1555],
+  "충북":[36.6357,127.4917], "충남":[36.6588,126.6728], "전북":[35.8202,127.1088],
+  "전남":[34.8161,126.4629], "경북":[36.5759,128.5056], "경남":[35.2278,128.6811],
+  "제주":[33.4996,126.5312],
+};
+
+// ===== 가상 데이터(일자리·채용 정보) =====
+const INDUSTRY_COLOR = { "제조업":"#607d8b", "요식업":"#ff7043", "IT":"#42a5f5", "서비스업":"#8bc34a" };
+const INFRA = [
+  {key:"subway", label:"지하철", color:"#3949ab"},
+  {key:"bus", label:"버스", color:"#00897b"},
+  {key:"restaurant", label:"음식점", color:"#fb8c00"},
+  {key:"museum", label:"미술관", color:"#8e24aa"},
+  {key:"park", label:"공원", color:"#43a047"},
+];
+
+// 실업률(%)·취업자 수(만명): 통계청(국가데이터처) 경제활동인구조사 "2026년 9월 고용동향"
+// (2026.10.16 발표) 시도별 고용률 및 실업률, 시도별 경제활동인구 총괄 표 기준 실제 수치.
+const regions = [
+  mk("서울", 2.5, 528, [
+    job("한빛전자","제조업","생산관리직","2026-12-10","02-111-2222"),
+    job("맛있는집","요식업","홀서빙","2026-12-05","02-222-3333"),
+    job("코드팩토리","IT","백엔드 개발자","2026-12-20","02-333-4444"),
+  ]),
+  mk("부산", 1.5, 172, [
+    job("해양중공업","제조업","용접기술자","2026-12-15","051-111-2222"),
+    job("동백식당","요식업","주방보조","2026-11-30","051-222-3333"),
+  ]),
+  mk("대구", 2.5, 124, [
+    job("섬유테크","제조업","품질관리","2026-12-01","053-111-2222"),
+  ]),
+  mk("인천", 2.4, 176, [
+    job("인천물류","제조업","지게차기사","2026-12-18","032-111-2222"),
+    job("IT스퀘어","IT","프론트엔드 개발자","2026-12-25","032-222-3333"),
+  ]),
+  mk("광주", 2.2, 80, [
+    job("빛고을푸드","요식업","홀매니저","2026-12-08","062-111-2222"),
+  ]),
+  mk("대전", 2.0, 82, [
+    job("대덕바이오","제조업","연구보조원","2026-12-22","042-111-2222"),
+  ]),
+  mk("세종", 0.8, 22, [
+    job("세종행정지원","서비스업","행정보조","2026-12-12","044-111-2222"),
+  ]),
+  mk("경기", 2.1, 789, [
+    job("판교IT타운","IT","풀스택 개발자","2026-12-28","031-111-2222"),
+    job("수원기계","제조업","설비엔지니어","2026-12-09","031-222-3333"),
+  ]),
+  mk("강원", 1.7, 89, [
+    job("설악관광","서비스업","숙박시설 관리","2026-11-28","033-111-2222"),
+  ]),
+  mk("충북", 1.5, 99, [
+    job("청주전자","제조업","라인관리자","2026-12-14","043-111-2222"),
+  ]),
+  mk("충남", 0.6, 136, [
+    job("서산화학","제조업","공정관리자","2026-12-19","041-111-2222"),
+  ]),
+  mk("전북", 1.5, 99, [
+    job("전주맛집","요식업","조리사","2026-12-06","063-111-2222"),
+  ]),
+  mk("전남", 1.9, 102, [
+    job("여수화력","제조업","설비기술자","2026-12-16","061-111-2222"),
+  ]),
+  mk("경북", 1.9, 148, [
+    job("포항제철소","제조업","생산직","2026-12-11","054-111-2222"),
+  ]),
+  mk("경남", 1.9, 182, [
+    job("창원기계","제조업","CNC 오퍼레이터","2026-12-13","055-111-2222"),
+  ]),
+  mk("제주", 0.8, 42, [
+    job("제주관광센터","서비스업","관광 가이드","2026-12-24","064-111-2222"),
+  ]),
+];
+
+function mk(name, unemp, emp, jobs){ return {name, unemp, emp, jobs}; }
+function job(company, industry, position, deadline, contact){ return {company, industry, position, deadline, contact}; }
+
+// ===== 유틸: 실업률 -> 색상(초록~빨강) =====
+function unempColor(rate){
+  const min=0.5, max=3.0;
+  const t = Math.max(0, Math.min(1, (rate-min)/(max-min)));
+  const r = Math.round(47 + (232-47)*t);
+  const g = Math.round(191 + (81-191)*t);
+  const b = Math.round(113 + (63-113)*t);
+  return `rgb(${r},${g},${b})`;
+}
+
+let selectedRegion = null;
+let activeTab = "jobs";
+let activeInfra = new Set(INFRA.map(i=>i.key));
+
+// ===== 0. 사이드바 지역 목록 렌더 =====
+const regionList = document.getElementById("regionList");
+regions.forEach(r=>{
+  const row = document.createElement("div");
+  row.className = "region-item";
+  row.innerHTML = `<span class="dot" style="background:${unempColor(r.unemp)}"></span>
+                    <span class="name">${r.name}</span>
+                    <span class="rate">${r.unemp}%</span>`;
+  row.onclick = () => selectRegion(r, row);
+  regionList.appendChild(row);
+});
+
+function selectRegion(r, el){
+  selectedRegion = r;
+  document.querySelectorAll(".region-item").forEach(d=>d.classList.remove("active"));
+  el.classList.add("active");
+  document.getElementById("emptyState").style.display = "none";
+  document.getElementById("detailPanel").style.display = "block";
+  document.getElementById("regionTitle").textContent = r.name;
+  renderStats(r);
+  renderIndustryFilter(r);
+  renderInfraToggles();
+  renderJobMarkers(r, "전체");
+  moveMapToRegion(r);
+  renderCompareSelect(r);
+  showTab(activeTab);
+}
+
+// ===== 탭 전환 =====
+document.getElementById("tabsNav").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab-btn");
+  if (!btn) return;
+  showTab(btn.dataset.tab);
+});
+
+function showTab(name){
+  activeTab = name;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.dataset.panel === name));
+  if (name === "infra" && mapReady && map){
+    setTimeout(() => map.invalidateSize(), 0); // 숨겨져 있던 지도 컨테이너 크기를 보이게 된 뒤 재계산
+  }
+}
+
+// ===== 일자리 현황 =====
+function renderStats(r){
+  document.getElementById("unempNum").textContent = r.unemp + "%";
+  document.getElementById("empNum").textContent = r.emp + "만";
+}
+
+// ===== 채용 정보 =====
+function renderIndustryFilter(r){
+  const sel = document.getElementById("industryFilter");
+  const industries = ["전체", ...new Set(r.jobs.map(j=>j.industry))];
+  sel.innerHTML = industries.map(i=>`<option value="${i}">${i}</option>`).join("");
+  sel.onchange = () => renderJobMarkers(r, sel.value);
+}
+
+function renderJobMarkers(r, industryFilter){
+  const wrap = document.getElementById("jobMarkers");
+  document.getElementById("jobDetail").style.display = "none";
+  const jobs = r.jobs.filter(j => industryFilter==="전체" || j.industry===industryFilter);
+  if(jobs.length===0){ wrap.innerHTML = "<span class='empty-note'>해당 업종의 채용 정보가 없습니다.</span>"; return; }
+  wrap.innerHTML = "";
+  jobs.forEach(j=>{
+    const m = document.createElement("div");
+    m.className = "marker";
+    m.style.background = INDUSTRY_COLOR[j.industry] || "#999";
+    m.textContent = j.company[0];
+    m.title = j.company;
+    m.onclick = () => {
+      document.getElementById("jobDetail").style.display = "block";
+      document.getElementById("jobDetail").innerHTML =
+        `<b>회사명:</b> ${j.company}<br><b>업종:</b> ${j.industry}<br><b>모집직무:</b> ${j.position}<br><b>마감일:</b> ${j.deadline}<br><b>연락처:</b> ${j.contact}`;
+    };
+    wrap.appendChild(m);
+  });
+}
+
+// ===== 생활 인프라 (Overpass API 실제 데이터 우선, 실패 시 가상 데이터로 자동 대체) =====
+let map;
+let mapReady = false;
+let categoryMarkers = { subway:[], bus:[], restaurant:[], museum:[], park:[] }; // 현재 지도에 떠 있는 마커
+let regionDataCache = {}; // 지역명 -> Promise<{ grouped:{subway:[{lat,lon,name}],...}, isVirtual:boolean }>
+let infraCounts = {};     // key -> 현재 지역의 장소 수(버튼 라벨 표시용)
+
+// 공개 Overpass 인스턴스 여러 개를 순서대로 시도한다(하나가 응답이 없거나 차단되면 다음 서버로 자동 전환).
+const OVERPASS_URLS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+];
+const INFRA_LIMIT = { subway:30, bus:40, restaurant:60, museum:20, park:25 }; // 카테고리별 최대 표시 개수
+const INFRA_RADIUS_M = 6000;
+
+function categorizeTags(tags){
+  if (!tags) return null;
+  if (tags.railway === "station" || tags.railway === "halt" || tags.railway === "subway_entrance") return "subway";
+  if (tags.highway === "bus_stop") return "bus";
+  if (tags.amenity === "restaurant") return "restaurant";
+  if (tags.tourism === "museum") return "museum";
+  if (tags.leisure === "park") return "park";
+  return null;
+}
+
+function buildOverpassQuery(lat, lng){
+  const r = INFRA_RADIUS_M;
+  return `[out:json][timeout:25];
+(
+  node["railway"~"^(station|halt)$"](around:${r},${lat},${lng});
+  node["railway"="subway_entrance"](around:${r},${lat},${lng});
+)->.subway;
+node["highway"="bus_stop"](around:${r},${lat},${lng})->.bus;
+node["amenity"="restaurant"](around:${r},${lat},${lng})->.restaurant;
+node["tourism"="museum"](around:${r},${lat},${lng})->.museum;
+(
+  node["leisure"="park"](around:${r},${lat},${lng});
+  way["leisure"="park"](around:${r},${lat},${lng});
+)->.park;
+.subway out center ${INFRA_LIMIT.subway};
+.bus out center ${INFRA_LIMIT.bus};
+.restaurant out center ${INFRA_LIMIT.restaurant};
+.museum out center ${INFRA_LIMIT.museum};
+.park out center ${INFRA_LIMIT.park};`;
+}
+
+async function queryOverpass(url, query){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "data=" + encodeURIComponent(query),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error("Overpass API 오류: " + res.status);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchRealRegionData(r){
+  const [lat, lng] = REGION_COORDS[r.name];
+  const query = buildOverpassQuery(lat, lng);
+  let lastErr;
+  for (const url of OVERPASS_URLS){
+    try {
+      const data = await queryOverpass(url, query);
+      const grouped = { subway:[], bus:[], restaurant:[], museum:[], park:[] };
+      (data.elements || []).forEach(el => {
+        const key = categorizeTags(el.tags);
+        if (!key) return;
+        const lat2 = el.type === "node" ? el.lat : (el.center && el.center.lat);
+        const lon2 = el.type === "node" ? el.lon : (el.center && el.center.lon);
+        if (lat2 == null || lon2 == null) return;
+        const label = INFRA.find(i => i.key === key).label;
+        grouped[key].push({ lat: lat2, lon: lon2, name: (el.tags && el.tags.name) || label });
+      });
+      return grouped;
+    } catch (err) {
+      console.warn("Overpass 인스턴스 실패, 다음 서버로 재시도:", url, err);
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("모든 Overpass 서버에 연결하지 못했습니다.");
+}
+
+// 실제 데이터를 가져올 수 없을 때를 위한 지역별 가상 인프라 개수(시연용 대체 데이터)
+const VIRTUAL_INFRA_COUNT = {
+  "서울":{subway:23,bus:40,restaurant:60,museum:12,park:15}, "부산":{subway:10,bus:25,restaurant:35,museum:6,park:10},
+  "대구":{subway:5,bus:20,restaurant:28,museum:4,park:8}, "인천":{subway:8,bus:22,restaurant:30,museum:5,park:9},
+  "광주":{subway:2,bus:15,restaurant:20,museum:3,park:7}, "대전":{subway:2,bus:14,restaurant:18,museum:3,park:6},
+  "세종":{subway:0,bus:8,restaurant:10,museum:1,park:5}, "경기":{subway:18,bus:50,restaurant:80,museum:10,park:20},
+  "강원":{subway:0,bus:12,restaurant:16,museum:4,park:12}, "충북":{subway:0,bus:10,restaurant:14,museum:2,park:6},
+  "충남":{subway:0,bus:13,restaurant:17,museum:2,park:7}, "전북":{subway:0,bus:11,restaurant:19,museum:2,park:6},
+  "전남":{subway:0,bus:10,restaurant:15,museum:2,park:8}, "경북":{subway:0,bus:14,restaurant:18,museum:2,park:7},
+  "경남":{subway:0,bus:16,restaurant:22,museum:3,park:9}, "제주":{subway:0,bus:9,restaurant:25,museum:3,park:14},
+};
+
+// 중심 좌표(lat,lng)에서 반경 radiusKm 안의 임의의 지점 생성
+function randomPointNear(lat, lng, radiusKm){
+  const degPerKm = 1 / 111; // 위도 1도 ≈ 111km
+  const w = radiusKm * degPerKm * Math.sqrt(Math.random());
+  const t = 2 * Math.PI * Math.random();
+  const dLat = w * Math.cos(t);
+  const dLng = (w * Math.sin(t)) / Math.cos(lat * Math.PI / 180);
+  return [lat + dLat, lng + dLng];
+}
+
+function buildVirtualRegionData(r){
+  const [lat, lng] = REGION_COORDS[r.name];
+  const counts = VIRTUAL_INFRA_COUNT[r.name] || {};
+  const grouped = {};
+  INFRA.forEach(i=>{
+    const count = counts[i.key] || 0;
+    grouped[i.key] = Array.from({ length: count }, (_, idx) => {
+      const [plat, plng] = randomPointNear(lat, lng, 6);
+      return { lat: plat, lon: plng, name: `${i.label} ${idx + 1} (가상 데이터)` };
+    });
+  });
+  return grouped;
+}
+
+// 실제 데이터 조회를 시도하고, 실패하면 가상 데이터로 조용히 대체한다(화면에는 상태만 안내).
+function ensureRegionData(r){
+  if (!regionDataCache[r.name]){
+    regionDataCache[r.name] = fetchRealRegionData(r)
+      .then(grouped => ({ grouped, isVirtual: false }))
+      .catch(err => {
+        console.error("실제 인프라 데이터를 불러오지 못해 가상 데이터로 대체합니다:", err);
+        return { grouped: buildVirtualRegionData(r), isVirtual: true };
+      });
+  }
+  return regionDataCache[r.name];
+}
+
+function setInfraStatus(text, warn){
+  const el = document.getElementById("infraStatus");
+  el.textContent = text;
+  el.classList.toggle("warn", !!warn);
+}
+
+function initLeafletMap(){
+  if (typeof L === "undefined"){
+    console.error("Leaflet 라이브러리를 불러오지 못했습니다(vendor/leaflet/leaflet.js 확인 필요).");
+    setInfraStatus("지도 라이브러리를 불러오지 못했습니다. 인터넷 연결 또는 파일 경로를 확인해주세요.", true);
+    return;
+  }
+  map = L.map("map").setView([36.5, 127.8], 7);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(map);
+  mapReady = true;
+  if (selectedRegion) moveMapToRegion(selectedRegion);
+}
+initLeafletMap();
+
+function clearMapMarkers(){
+  Object.keys(categoryMarkers).forEach(key=>{
+    categoryMarkers[key].forEach(m=>map.removeLayer(m));
+    categoryMarkers[key] = [];
+  });
+}
+
+async function moveMapToRegion(r){
+  renderInfraToggles();
+  if (!mapReady) return;
+  map.invalidateSize(); // #map이 display:none 상태에서 생성됐을 수 있으므로 보이게 된 뒤 크기를 다시 계산
+  const [lat, lng] = REGION_COORDS[r.name];
+  map.setView([lat, lng], 11);
+  clearMapMarkers();
+  infraCounts = {};
+  renderInfraToggles();
+  setInfraStatus("OpenStreetMap에서 실제 인프라 데이터를 불러오는 중...");
+  const { grouped, isVirtual } = await ensureRegionData(r);
+  if (selectedRegion !== r) return; // 불러오는 사이 다른 지역을 선택했으면 무시
+  INFRA.forEach(i => { if (activeInfra.has(i.key)) plotCategory(i.key, grouped[i.key]); });
+  setInfraStatus(isVirtual ? "실시간 데이터를 불러오지 못해 가상 데이터로 표시 중입니다." : "", isVirtual);
+}
+
+function plotCategory(key, places){
+  const infraDef = INFRA.find(i=>i.key===key);
+  const markers = places.map(place=>{
+    const marker = L.circleMarker([place.lat, place.lon], {
+      radius: 7, color: "#fff", weight: 2, fillColor: infraDef.color, fillOpacity: 1,
+    }).bindPopup(place.name);
+    marker.addTo(map);
+    return marker;
+  });
+  categoryMarkers[key] = markers;
+  infraCounts[key] = markers.length;
+  renderInfraToggles();
+}
+
+function renderInfraToggles(){
+  const wrap = document.getElementById("infraToggles");
+  wrap.innerHTML = "";
+  INFRA.forEach(i=>{
+    const btn = document.createElement("button");
+    btn.className = "toggle" + (activeInfra.has(i.key) ? " on" : "");
+    const count = infraCounts[i.key];
+    btn.textContent = i.label + (activeInfra.has(i.key) ? ` (${count===undefined ? "…" : count})` : "");
+    btn.onclick = async () => {
+      if (activeInfra.has(i.key)){
+        activeInfra.delete(i.key);
+        categoryMarkers[i.key].forEach(m=>map.removeLayer(m));
+        categoryMarkers[i.key] = [];
+        delete infraCounts[i.key];
+        renderInfraToggles();
+        return;
+      }
+      activeInfra.add(i.key);
+      renderInfraToggles();
+      if (!selectedRegion) return;
+      const region = selectedRegion;
+      const { grouped } = await ensureRegionData(region);
+      if (selectedRegion === region && activeInfra.has(i.key)) plotCategory(i.key, grouped[i.key]);
+    };
+    wrap.appendChild(btn);
+  });
+}
+
+// ===== 지역 비교 =====
+function renderCompareSelect(r){
+  const sel = document.getElementById("compareSelect");
+  sel.innerHTML = regions.map(x=>`<option value="${x.name}" ${x.name===r.name?"disabled":""}>${x.name}</option>`).join("");
+  sel.onchange = () => renderCompareTable(r, regions.find(x=>x.name===sel.value));
+  renderCompareTable(r, regions.find(x=>x.name===sel.value));
+}
+
+async function infraTotal(r){
+  const { grouped, isVirtual } = await ensureRegionData(r);
+  const total = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
+  return total + "개" + (isVirtual ? " (가상)" : "");
+}
+
+let compareRequestId = 0;
+async function renderCompareTable(a, b){
+  const requestId = ++compareRequestId;
+  const table = document.getElementById("compareTable");
+  table.innerHTML = `
+    <tr><th>항목</th><th>${a.name}</th><th>${b.name}</th></tr>
+    <tr><td>실업률</td><td>${a.unemp}%</td><td>${b.unemp}%</td></tr>
+    <tr><td>취업자 수</td><td>${a.emp}만명</td><td>${b.emp}만명</td></tr>
+    <tr><td>채용 공고 수</td><td>${a.jobs.length}건</td><td>${b.jobs.length}건</td></tr>
+    <tr><td>인프라 합계</td><td id="infraTotalA">불러오는 중...</td><td id="infraTotalB">불러오는 중...</td></tr>
+  `;
+  const [totalA, totalB] = await Promise.all([infraTotal(a), infraTotal(b)]);
+  if (requestId !== compareRequestId) return; // 그 사이 다른 지역 비교가 요청된 경우 무시
+  document.getElementById("infraTotalA").textContent = totalA;
+  document.getElementById("infraTotalB").textContent = totalB;
+}
+</script>
+</body>
+</html>
